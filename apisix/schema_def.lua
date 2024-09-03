@@ -905,6 +905,7 @@ _M.stream_route = {
     type = "object",
     properties = {
         id = id_schema,
+        name = rule_name_def,
         desc = desc_def,
         create_time = timestamp_def,
         update_time = timestamp_def,
