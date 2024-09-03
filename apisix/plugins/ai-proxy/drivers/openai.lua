@@ -17,12 +17,14 @@
 local _M = {}
 
 local core = require("apisix.core")
+local http = require("resty.http")
 local test_scheme = os.getenv("AI_PROXY_TEST_SCHEME")
 local upstream = require("apisix.upstream")
 local ngx = ngx
 local pairs = pairs
 
 -- globals
+local DEFAULT_ENDPOINT = "https://api.openai.com:443"
 local DEFAULT_HOST = "api.openai.com"
 local DEFAULT_PORT = 443
 
@@ -30,38 +32,25 @@ local path_mapper = {
     ["llm/chat"] = "/v1/chat/completions",
 }
 
-
-function _M.configure_request(conf, request_table, ctx)
-    local ups_host = DEFAULT_HOST
-    if conf.override and conf.override.host and conf.override.host ~= "" then
-        ups_host = conf.override.host
-    end
-    local ups_port = DEFAULT_PORT
-    if conf.override and conf.override.port and conf.override.host ~= "" then
-        ups_port = conf.override.port
-    end
-    local upstream_addr = ups_host .. ":" .. ups_port
-    core.log.info("modified upstream address: ", upstream_addr)
-    local upstream_node = {
-        nodes = {
-            [upstream_addr] = 1
+-------------------------------- MODIFIED --------------------------------
+function _M.request(conf, request_table, ctx)
+    local params = {
+        method = "POST",
+        headers = {
+            ["Content-Type"] = "application/json",
         },
-        pass_host = "node",
-        scheme = test_scheme or "https",
-        vid = "openai",
+        --keepalive = conf.keepalive,
+        --ssl_verify = conf.ssl_verify
     }
-    upstream.set_upstream(upstream_node, ctx)
 
-    local ups_path = (conf.override and conf.override.path)
-                        or path_mapper[conf.route_type]
-    ngx.var.upstream_uri = ups_path
-    ngx.req.set_method(ngx.HTTP_POST)
+    --if conf.keepalive then
+    --    params.keepalive_timeout = conf.keepalive_timeout
+    --    params.keepalive_pool = conf.keepalive_pool
+    --end
+
     if conf.auth.type == "header" then
-        core.request.set_header(ctx, conf.auth.name, conf.auth.value)
-    else
-        local args = core.request.get_uri_args(ctx)
-        args[conf.auth.name] = conf.auth.value
-        core.request.set_uri_args(ctx, args)
+        -- move to headers table input
+        params.headers[conf.auth.name] = conf.auth.value
     end
 
     if conf.model.options then
@@ -69,7 +58,15 @@ function _M.configure_request(conf, request_table, ctx)
             request_table[opt] = val
         end
     end
-    return true
+    params.body = core.json.encode(request_table)
+
+    local endpoint = DEFAULT_ENDPOINT .. path_mapper[conf.route_type]
+    local httpc = http.new()
+    --httpc:set_timeout(conf.timeout)
+
+    return httpc:request_uri(endpoint, params)
 end
+--------------------------------------------------------------------------
+
 
 return _M

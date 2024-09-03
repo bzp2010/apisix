@@ -73,21 +73,40 @@ function _M.access(conf, ctx)
     end
 
     local ai_driver = require("apisix.plugins.ai-proxy.drivers." .. conf.model.provider)
-    local ok, err = ai_driver.configure_request(conf, request_table, ctx)
-    if not ok then
-        core.log.error("failed to configure request for AI service: ", err)
-        return 500
+    -------------------------------- MODIFIED --------------------------------
+    local res, err = ai_driver.request(conf, request_table, ctx)
+    if not res then
+        return 500, "failed to proxy LLM request: " .. err
     end
 
-    if route_type ~= "passthrough" then
-        local final_body, err = core.json.encode(request_table)
-        core.log.info("final parsed body: ", final_body)
-        if not final_body then
-            core.log.error("failed to encode request body to JSON: ", err)
-            return 500
-        end
-        ngx_req.set_body_data(final_body)
+    local data
+
+    if conf.passthrough then
+        -- do we need a buffer to cache entire LLM response?
+        -- i think so, we can do something like the following, just read, no return
+        ngx_req.set_body_data(res.data)
+        return
     end
+
+    if core.table.try_read_attr(conf, "model", "options", "stream") then
+        local reader = res.body_reader
+        while true do
+            local buffer, err = reader()
+            if err then
+                ngx.log(ngx.ERR, err)
+                break
+            end
+
+            ngx.print(buffer)
+            ngx.flush(true) -- just a example, need more verification
+        end
+    else
+        return 200, res.data
+    end
+    -- we may have to simulate an SSE (chunked) response through the scheme mentioned in
+    -- https://github.com/openresty/lua-nginx-module/issues/1736#issuecomment-650143112
+    -- return 200, res.data
+    --------------------------------------------------------------------------
 end
 
 return _M

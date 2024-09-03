@@ -140,6 +140,7 @@ _M.plugin_schema = {
         },
         auth = auth_schema,
         model = model_schema,
+        passthrough = { type = "boolean", default = false }
     },
     required = {"route_type", "model", "auth"}
 }
