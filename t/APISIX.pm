@@ -266,6 +266,7 @@ env APISIX_PROFILE;
 env PATH; # for searching external plugin runner's binary
 env TEST_NGINX_HTML_DIR;
 env OPENSSL_BIN;
+env AI_PROXY_TEST_SCHEME;
 _EOC_
 
 
@@ -775,6 +776,27 @@ _EOC_
             content_by_lua_block {
                 apisix.http_control()
             }
+        }
+
+        location /subrequest {
+            internal;
+
+            proxy_http_version 1.1;
+            proxy_set_header   Host              \$upstream_host;
+            proxy_set_header   Upgrade           \$upstream_upgrade;
+            proxy_set_header   Connection        \$upstream_connection;
+            proxy_set_header   X-Real-IP         \$remote_addr;
+
+            proxy_set_header   X-Forwarded-For      \$proxy_add_x_forwarded_for;
+            proxy_set_header   X-Forwarded-Proto    \$scheme;
+            proxy_set_header   X-Forwarded-Host     \$host;
+            proxy_set_header   X-Forwarded-Port     \$server_port;
+
+            proxy_pass_header     Server;
+            proxy_pass_header     Date;
+            proxy_ssl_name        \$upstream_host;
+            proxy_ssl_server_name on;
+            proxy_pass      \$upstream_scheme://apisix_backend\$upstream_uri;
         }
 
         location / {
